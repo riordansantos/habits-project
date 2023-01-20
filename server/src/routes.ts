@@ -1,13 +1,15 @@
-import { prisma } from "./lib/prisma";
+import dayjs from "dayjs";
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import dayjs from "dayjs";
+import { prisma } from "./lib/prisma";
+
 export async function appRoutes(app: FastifyInstance) {
   app.post("/habits", async (request) => {
     const createHabitBody = z.object({
       title: z.string(),
       weekDays: z.array(z.number().min(0).max(6)),
     });
+
     const { title, weekDays } = createHabitBody.parse(request.body);
 
     const today = dayjs().startOf("day").toDate();
@@ -33,8 +35,8 @@ export async function appRoutes(app: FastifyInstance) {
     });
 
     const { date } = getDayParams.parse(request.query);
-    const parsedDate = dayjs(date).startOf("day");
 
+    const parsedDate = dayjs(date).startOf("day");
     const weekDay = parsedDate.get("day");
 
     const possibleHabits = await prisma.habit.findMany({
@@ -69,7 +71,6 @@ export async function appRoutes(app: FastifyInstance) {
     };
   });
 
-  // completar e descompletar um hábito
   app.patch("/habits/:id/toggle", async (request) => {
     const toggleHabitParams = z.object({
       id: z.string().uuid(),
@@ -103,14 +104,12 @@ export async function appRoutes(app: FastifyInstance) {
     });
 
     if (dayHabit) {
-      //Descompletar hábito
       await prisma.dayHabit.delete({
         where: {
           id: dayHabit.id,
         },
       });
     } else {
-      // Completar hábito
       await prisma.dayHabit.create({
         data: {
           day_id: day.id,
@@ -121,28 +120,29 @@ export async function appRoutes(app: FastifyInstance) {
   });
 
   app.get("/summary", async () => {
-  const summary = await prisma.$queryRaw`
-    SELECT 
-      D.id, 
-      D.date, 
-      (
-        SELECT 
-          cast(count(*) as float) 
-        FROM day_habits DH 
-        WHERE Dh.day_id = D.id
-      ) as completed,
-      (
-        SELECT 
-          cast(count(*) as float) 
-        FROM habit_week_days WHD
-        JOIN habits H
-          ON H.id = HWD.habit_id
-        WHERE
-          HWD.week_day = cast(strftime('%w', D.date/1000.0, 'unixepoch') as int)
-          AND H.created_at <= D.date
-      ) as amout
-    FROM days D
+    const summary = await prisma.$queryRaw`
+      SELECT 
+        D.id, 
+        D.date,
+        (
+          SELECT 
+            cast(count(*) as float)
+          FROM day_habits DH
+          WHERE DH.day_id = D.id
+        ) as completed,
+        (
+          SELECT
+            cast(count(*) as float)
+          FROM habit_week_days HDW
+          JOIN habits H
+            ON H.id = HDW.habit_id
+          WHERE
+            HDW.week_day = cast(strftime('%w', D.date/1000.0, 'unixepoch') as int)
+            AND H.created_at <= D.date
+        ) as amount
+      FROM days D
     `;
+
     return summary;
   });
 }
